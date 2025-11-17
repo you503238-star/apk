@@ -17,15 +17,15 @@ jobs:
           npm -v
 
       - name: Set up JDK 21
+        id: setup-java
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '21'
           cache: 'gradle'
 
-      - uses: android-actions/setup-android@v3
-
-      - name: Build APK
+      # Prepare web assets and create the Android project BEFORE setup-android
+      - name: Prepare Capacitor web build and create Android project
         env:
           JAVA_HOME: ${{ steps.setup-java.outputs.java-home }}
         run: |
@@ -37,13 +37,44 @@ jobs:
           mkdir -p dist
           echo '<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Hallor</title></head><body><script>window.location.href="https://hallor.sbs"</script></body></html>' > dist/index.html
           echo '{"appId":"com.hallor.app","appName":"Hallor","webDir":"dist","server":{"url":"https://hallor.sbs","cleartext":false}}' > capacitor.config.json
+          # Create the native Android project files so setup-android can detect Gradle files
           npx cap add android
           npx cap sync android
+
+      # Now run setup-android so it can inspect android/ and install required SDK components
+      - name: Setup Android SDK & tools
+        uses: android-actions/setup-android@v3
+        with:
+          api-level: 33
+          build-tools: 33.0.2
+          cmake: false
+          # Add other components if needed, e.g. ndk-version: "23.1.7779620"
+
+      # Debug listing of android folder (optional, remove when stable)
+      - name: List android files for debug
+        run: |
+          echo "=== android tree ==="
+          ls -la
+          if [ -d android ]; then
+            find android -maxdepth 3 -type f -print | sed -n '1,200p'
+          else
+            echo "android/ directory not found"
+          fi
+
+      - name: Build APK
+        env:
+          JAVA_HOME: ${{ steps.setup-java.outputs.java-home }}
+        run: |
+          echo "Using JAVA_HOME=$JAVA_HOME"
+          export PATH=$JAVA_HOME/bin:$PATH
           # Ensure Gradle uses the same JDK
+          mkdir -p android
+          # Append only if file exists; echo will create the file if necessary
           echo "org.gradle.java.home=$JAVA_HOME" >> android/gradle.properties
           cd android
           chmod +x gradlew
-          ./gradlew assembleDebug -Dorg.gradle.java.home=$JAVA_HOME
+          # Use --no-daemon for CI and fail fast flags
+          ./gradlew clean assembleDebug --no-daemon -Dorg.gradle.java.home=$JAVA_HOME
 
       - uses: actions/upload-artifact@v4
         with:
