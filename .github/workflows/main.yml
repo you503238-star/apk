@@ -9,27 +9,27 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'  # Use '25.2.1' if absolutely needed, but Node 20 LTS is safer for most build tools
+          node-version: '20'
 
       - name: Display Node.js version
         run: |
           node -v
           npm -v
 
-      - name: Set up Java with SDKMAN
-        run: |
-          curl -fsSL https://get.sdkman.io | bash
-          source "$HOME/.sdkman/bin/sdkman-init.sh"
-          sdk install java $(sdk list java | grep -oE '[0-9]+\.[0-9]+\.[0-9]+-tem' | head -1)
-          export JAVA_HOME="$HOME/.sdkman/candidates/java/current"
-          echo "JAVA_HOME set to $JAVA_HOME"
-          java -version
-        shell: bash
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+          cache: 'gradle'
 
       - uses: android-actions/setup-android@v3
 
       - name: Build APK
+        env:
+          JAVA_HOME: ${{ steps.setup-java.outputs.java-home }}
         run: |
+          echo "Using JAVA_HOME=$JAVA_HOME"
           export PATH=$JAVA_HOME/bin:$PATH
           node -v
           npm init -y
@@ -39,6 +39,7 @@ jobs:
           echo '{"appId":"com.hallor.app","appName":"Hallor","webDir":"dist","server":{"url":"https://hallor.sbs","cleartext":false}}' > capacitor.config.json
           npx cap add android
           npx cap sync android
+          # Ensure Gradle uses the same JDK
           echo "org.gradle.java.home=$JAVA_HOME" >> android/gradle.properties
           cd android
           chmod +x gradlew
